@@ -80,9 +80,11 @@ int convertImage(std::filesystem::path path) {
         case 0: return "Vertical stripes";
         case 1: return "Horizontal stripes";
         case 2: return "Vertical+Horizontal stripes";
-        case 3: return "Coordinate grid (RG = ST)";
-        case 4: return "Colored vertices";
-        case 5: return "Plain white";
+        case 3: return "8x8 coordinate grid (RG = ST)";
+        case 4: return "16x16 coordinate grid (RG = ST)";
+        case 5: return "32x32 coordinate grid (RG = ST)";
+        case 6: return "Colored vertices";
+        case 7: return "Plain white";
         default: return std::format("Invalid value: {:d}", texMode);
         }
     };

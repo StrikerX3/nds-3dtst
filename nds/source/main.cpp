@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdio>
 #include <nds.h>
 #include <fat.h>
@@ -67,18 +68,44 @@ int main()
     glBindTexture(0, texVertHorzStripesID);
     glTexImage2D(0, 0, GL_RGB, TEXTURE_SIZE_128, TEXTURE_SIZE_128, 0, TEXGEN_TEXCOORD, texVertHorzStripes);
 
-    uint16_t texColorCoords[8 * 8];
+    uint16_t texColorCoords8[8 * 8];
     for (int y = 0; y < 8; y++)
         for (int x = 0; x < 8; x++)
-            texColorCoords[y * 8 + x] = 0x8000
+            texColorCoords8[y * 8 + x] = 0x8000
                 | ((x << 2) | (x >> 1))
                 | (((y << 2) | (y >> 1)) << 5)
                 | (0x0F << 10);
 
-    int texColorCoordsID;
-    glGenTextures(1, &texColorCoordsID);
-    glBindTexture(0, texColorCoordsID);
-    glTexImage2D(0, 0, GL_RGB, TEXTURE_SIZE_8, TEXTURE_SIZE_8, 0, TEXGEN_TEXCOORD, texColorCoords);
+    int texColorCoords8ID;
+    glGenTextures(1, &texColorCoords8ID);
+    glBindTexture(0, texColorCoords8ID);
+    glTexImage2D(0, 0, GL_RGB, TEXTURE_SIZE_8, TEXTURE_SIZE_8, 0, TEXGEN_TEXCOORD, texColorCoords8);
+
+    uint16_t texColorCoords16[16 * 16];
+    for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++)
+            texColorCoords16[y * 16 + x] = 0x8000
+                | ((x << 1) | (x >> 3))
+                | (((y << 1) | (y >> 3)) << 5)
+                | (0x0F << 10);
+
+    int texColorCoords16ID;
+    glGenTextures(1, &texColorCoords16ID);
+    glBindTexture(0, texColorCoords16ID);
+    glTexImage2D(0, 0, GL_RGB, TEXTURE_SIZE_16, TEXTURE_SIZE_16, 0, TEXGEN_TEXCOORD, texColorCoords16);
+
+    uint16_t texColorCoords32[32 * 32];
+    for (int y = 0; y < 32; y++)
+        for (int x = 0; x < 32; x++)
+            texColorCoords32[y * 32 + x] = 0x8000
+                | (x << 0)
+                | (y << 5)
+                | (0x0F << 10);
+
+    int texColorCoords32ID;
+    glGenTextures(1, &texColorCoords32ID);
+    glBindTexture(0, texColorCoords32ID);
+    glTexImage2D(0, 0, GL_RGB, TEXTURE_SIZE_32, TEXTURE_SIZE_32, 0, TEXGEN_TEXCOORD, texColorCoords32);
 
     int x[4], y[4];
     x[0] =  64; y[0] =  32; x[1] =  64; y[1] = 160;
@@ -96,9 +123,12 @@ int main()
         "V stripes",
         "H stripes",
         "VH stripes",
-        "Coord grid",
+        "Coords 8",
+        "Coords 16",
+        "Coords 32",
         "Color verts",
         "Plain white" };
+    static constexpr size_t numTexModes = std::size(texModeNames);
 
     keysSetRepeat(20, 2);
 
@@ -136,8 +166,8 @@ int main()
             if (keysPressed & KEY_B)      edgeMark = !edgeMark;
             if (keysRepeat & KEY_X)       alpha = (alpha == 31) ? 31 : (alpha + 1);
             if (keysRepeat & KEY_Y)       alpha = (alpha == 0) ? 0 : (alpha - 1);
-            if (keysPressed & KEY_LEFT)   texMode = (texMode + 5) % 6;
-            if (keysPressed & KEY_RIGHT)  texMode = (texMode + 1) % 6;
+            if (keysPressed & KEY_LEFT)   texMode = (texMode + numTexModes - 1) % numTexModes;
+            if (keysPressed & KEY_RIGHT)  texMode = (texMode + 1) % numTexModes;
             if (keysPressed & KEY_START)  wire = !wire;
             if (keysPressed & KEY_SELECT) quad = !quad;
             if (keysPressed & KEY_R)      dumpScreen = true;
@@ -172,72 +202,76 @@ int main()
         antiAlias ? glEnable(GL_ANTIALIAS) : glDisable(GL_ANTIALIAS);
         edgeMark ? glEnable(GL_OUTLINE) : glDisable(GL_OUTLINE);
 
-        switch (texMode) {
-            case 0:
+        static constexpr struct {
+            bool isTexture;
+            union {
+                struct {
+                    int s, t;
+                } tex[4];
+                struct {
+                    uint8_t r, g, b;
+                } clr[4];
+            };
+        } texModeDescs[] = {
+            { .isTexture = true, .tex = { { 0, 0 }, { 0, 128 }, { 128, 128 }, { 128, 0 } } },
+            { .isTexture = true, .tex = { { 0, 0 }, { 0, 128 }, { 128, 128 }, { 128, 0 } } },
+            { .isTexture = true, .tex = { { 0, 0 }, { 0, 128 }, { 128, 128 }, { 128, 0 } } },
+            { .isTexture = true, .tex = { { 0, 0 }, { 0,   8 }, {   8,   8 }, {   8, 0 } } },
+            { .isTexture = true, .tex = { { 0, 0 }, { 0,  16 }, {  16,  16 }, {  16, 0 } } },
+            { .isTexture = true, .tex = { { 0, 0 }, { 0,  32 }, {  32,  32 }, {  32, 0 } } },
+            { .isTexture = false, .clr = { { 255,   0,   0 }, { 255, 255,   0 }, {   0,   0, 255 }, {   0, 255,   0 } } },
+            { .isTexture = false, .clr = { { 255, 255, 255 }, { 255, 255, 255 }, { 255, 255, 255 }, { 255, 255, 255 } } },
+        };
+
+        auto bindTexture = [&]() {
+            auto &desc = texModeDescs[texMode];
+            if (desc.isTexture) {
+                int id;
+                switch (texMode) {
+                    case 0: id = texVertStripesID; break;
+                    case 1: id = texHorzStripesID; break;
+                    case 2: id = texVertHorzStripesID; break;
+                    case 3: id = texColorCoords8ID; break;
+                    case 4: id = texColorCoords16ID; break;
+                    case 5: id = texColorCoords32ID; break;
+                    default: id = texVertStripesID; break;
+                }
                 glEnable(GL_TEXTURE_2D);
-                glBindTexture(0, texVertStripesID);
-                break;
-            case 1:
-                glEnable(GL_TEXTURE_2D);
-                glBindTexture(0, texHorzStripesID);
-                break;
-            case 2:
-                glEnable(GL_TEXTURE_2D);
-                glBindTexture(0, texVertHorzStripesID);
-                break;
-            case 3:
-                glEnable(GL_TEXTURE_2D);
-                glBindTexture(0, texColorCoordsID);
-                break;
-            default:
+                glBindTexture(0, id);
+            } else {
                 glDisable(GL_TEXTURE_2D);
-                break;
-        }
+            }
+        };
+
+        auto setupVertex = [&](size_t vertexIndex) {
+            auto &desc = texModeDescs[texMode];
+            if (desc.isTexture) {
+                auto &tex = desc.tex[vertexIndex];
+                GFX_TEX_COORD = TEXTURE_PACK(inttot16(tex.s), inttot16(tex.t));
+            } else {
+                auto &clr = desc.clr[vertexIndex];
+                glColor3b(clr.r, clr.g, clr.b);
+            }
+        };
+
+        bindTexture();
 
         glPolyFmt(POLY_ALPHA(wire ? 0 : alpha) | POLY_CULL_NONE);
 
         quad ? glBegin(GL_QUAD) : glBegin(GL_TRIANGLE);
         glColor3b(255, 255, 255);
 
-        switch (texMode) {
-            case 0: GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(0)); break;
-            case 1: GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(0)); break;
-            case 2: GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(0)); break;
-            case 3: GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(0)); break;
-            case 4: glColor3b(255, 0, 0); break;
-            case 5: glColor3b(255, 255, 255); break;
-        }
+        setupVertex(0);
         glVertex3v16(x[0] * 48, y[0] * 64, 0);
 
-        switch (texMode) {
-            case 0: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(128)); break;
-            case 1: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(128)); break;
-            case 2: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(128)); break;
-            case 3: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(0), inttot16(8)); break;
-            case 4: glColor3b(255, 255, 0); break;
-            case 5: glColor3b(255, 255, 255); break;
-        }
+        setupVertex(1);
         glVertex3v16(x[1] * 48, y[1] * 64, 0);
 
-        switch (texMode) {
-            case 0: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(128), inttot16(128)); break;
-            case 1: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(128), inttot16(128)); break;
-            case 2: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(128), inttot16(128)); break;
-            case 3: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(8), inttot16(8)); break;
-            case 4: glColor3b(0, 0, 255); break;
-            case 5: glColor3b(255, 255, 255); break;
-        }
+        setupVertex(2);
         glVertex3v16(x[2] * 48, y[2] * 64, 0);
 
         if (quad) {
-            switch (texMode) {
-                case 0: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(128), inttot16(0)); break;
-                case 1: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(128), inttot16(0)); break;
-                case 2: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(128), inttot16(0)); break;
-                case 3: GFX_TEX_COORD = GFX_TEX_COORD = TEXTURE_PACK(inttot16(8), inttot16(0)); break;
-                case 4: glColor3b(0, 255, 0); break;
-                case 5: glColor3b(255, 255, 255); break;
-            }
+            setupVertex(3);
             glVertex3v16(x[3] * 48, y[3] * 64, 0);
         }
 
